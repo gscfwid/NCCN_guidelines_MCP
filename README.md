@@ -24,7 +24,7 @@ This project follows a systematic approach to provide accurate medical guidance:
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd nccn_mcp
+cd NCCN_guidelines_MCP
 ```
 
 2. Install dependencies using uv:
