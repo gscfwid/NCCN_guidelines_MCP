@@ -2,6 +2,16 @@
 
 A Model Context Protocol (MCP) server that provides access to NCCN (National Comprehensive Cancer Network) clinical guidelines.
 
+## How It Works
+
+This project follows a systematic approach to provide accurate medical guidance:
+1. **Problem Analysis**: Understands the clinical question or scenario
+2. **Guidelines Retrieval**: Searches the NCCN index for relevant guidelines
+3. **Page-by-Page Reading**: Downloads and extracts specific pages from guidelines
+4. **Evidence-Based Response**: Provides answers based on the extracted content
+
+**Note**: This system does not use RAG (Retrieval-Augmented Generation) to ensure accuracy. Instead, it reads guidelines directly, which may result in longer response times during index initialization and PDF downloading/reading, but provides more reliable and precise medical guidance.
+
 ## Features
 
 - **Guidelines Index**: Automatically fetches and maintains an up-to-date index of NCCN guidelines
@@ -11,114 +21,69 @@ A Model Context Protocol (MCP) server that provides access to NCCN (National Com
 
 ## Installation
 
-1. Install dependencies:
+1. Clone the repository:
 ```bash
-pip install -r requirements.txt
+git clone <repository-url>
+cd nccn_mcp
 ```
 
-2. Configure NCCN credentials (optional but recommended):
-
-**Option A: Use the configuration script (recommended)**
+2. Install dependencies using uv:
 ```bash
-python setup_config.py
+uv sync
 ```
 
-**Option B: Set environment variables manually**
-```bash
-export NCCN_USERNAME="your_email@example.com"
-export NCCN_PASSWORD="your_password_here"
-```
+## Configuration
 
-**Option C: Create a `.env` file in the `guideline_new` directory**
-```env
-NCCN_USERNAME=your_email@example.com
-NCCN_PASSWORD=your_password_here
-```
+### Configure Client (Note: Supports only agents, such as Cursor, Cline, Claude desktop, etc.)
 
-3. Run the server:
-```bash
-python server.py
-```
+**Important**: Claude desktop may warn about insufficient context length when running this MCP.
 
-### Authentication Configuration
+Add this to your Client configuration:
 
-The server supports NCCN authentication through environment variables:
-
-- **NCCN_USERNAME**: Your NCCN account email
-- **NCCN_PASSWORD**: Your NCCN account password
-
-If these are not set, the server will still work but may have limited access to some premium NCCN content. You can also provide credentials directly when calling the `download_pdf` tool.
-
-## MCP Configuration
-
-To use with Claude for Desktop, add this to your `claude_desktop_config.json`:
-
-### Basic Configuration
+**Configuration with Environment Variables**
 ```json
 {
   "mcpServers": {
     "nccn-guidelines": {
-      "command": "python",
-      "args": ["/absolute/path/to/guideline_new/server.py"]
-    }
-  }
-}
-```
-
-### Configuration with Environment Variables
-```json
-{
-  "mcpServers": {
-    "nccn-guidelines": {
-      "command": "python",
-      "args": ["/absolute/path/to/guideline_new/server.py"],
+      "command": "uv",
+      "args": ["--directory", "<abslute_direction_of_nccn_mcp>", "run", "server.py"],
       "env": {
-        "NCCN_USERNAME": "your_email@example.com",
-        "NCCN_PASSWORD": "your_password_here"
+        "NCCN_USERNAME": "<your_nccn_username>",
+        "NCCN_PASSWORD": "<your_nccn_password>"
       }
     }
   }
 }
 ```
 
-**Note**: For security, it's recommended to set environment variables in your system rather than directly in the configuration file.
+### ⚠️ Important Notes
 
-## Available Resources
+- **First-time Setup**: When you first start the MCP server, it needs to generate the YAML index of NCCN guidelines. This process takes 1-2 minutes, so please wait before attempting to use the server.
+- **Response Times**: Due to the non-RAG approach for accuracy, expect longer response times during guideline downloading and PDF reading processes.
 
-- `nccn://guidelines-index`: Access the complete NCCN guidelines index
 
-## Available Prompts
+## Prompts
 
-- `nccn-usage-guide`: Comprehensive guide on how to use the server
+To have better response, please add the prompt in the file of prompt.md to the instruction of your Agent Client before your Question.
 
 ## Available Tools
 
-1. **download_pdf**: Download NCCN guideline PDFs
+1. **get_index**: Get the raw contents of the NCCN guidelines index YAML file.
+
+2. **download_pdf**: Download NCCN guideline PDFs
    - `url`: PDF URL to download
    - `filename` (optional): Custom filename
    - `username` (optional): NCCN login username (defaults to NCCN_USERNAME env var)
    - `password` (optional): NCCN login password (defaults to NCCN_PASSWORD env var)
 
-2. **extract_content**: Extract content from PDF pages
+3. **extract_content**: Extract content from PDF pages
    - `pdf_path`: Path to PDF file
    - `pages` (optional): Comma-separated page numbers (e.g., "1,3,5-7")
 
 ## Usage Example
 
-1. Ask the assistant to find guidelines for a specific condition
-2. The assistant will search the index and download the relevant PDF
-3. The assistant will extract relevant content from specific pages
-4. You'll receive evidence-based recommendations with page references
+Here are some example questions you can ask:
 
-## Initialization
-
-On first run, the server will:
-- Fetch the latest NCCN guidelines index from the NCCN website
-- Cache the index locally for 7 days
-- Display initialization status and guideline counts
-
-## Notes
-
-- Some NCCN PDFs require authentication - provide credentials when needed
-- PDF extraction preserves layout but may need interpretation for flowcharts
-- Index is automatically refreshed every 7 days 
+1. What are the available first-line immunotherapy options for ES-SCLC?
+2. What is the initial chemotherapy for triple-negative breast cancer?
+3. What are the immunotherapy options for neuroendocrine tumors?
