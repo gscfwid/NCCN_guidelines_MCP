@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 import os
 import time
 import logging
+from datetime import datetime
 
 # Ensure logs directory exists
 LOGS_DIR = os.path.join(os.path.dirname(__file__), 'logs')
@@ -39,6 +40,51 @@ if not logger.handlers:
     
     # Prevent propagation to root logger to avoid duplicate logs
     logger.propagate = False
+
+# Constants
+PDF_CACHE_MAX_AGE_DAYS = 7  # Default maximum PDF cache file validity period (days)
+
+def check_pdf_cache_age(file_path: str, max_age_days: int = PDF_CACHE_MAX_AGE_DAYS) -> dict:
+    """
+    Check PDF cache file age and validity
+    
+    Args:
+        file_path: Path to the PDF file
+        max_age_days: Maximum cache file validity period (days)
+    
+    Returns:
+        Dictionary containing cache file information
+    """
+    cache_info = {
+        'exists': False,
+        'file_path': file_path,
+        'size': 0,
+        'created_time': None,
+        'modified_time': None,
+        'age_days': 0,
+        'is_valid': False
+    }
+    
+    if os.path.exists(file_path):
+        cache_info['exists'] = True
+        stat = os.stat(file_path)
+        cache_info['size'] = stat.st_size
+        cache_info['created_time'] = datetime.fromtimestamp(stat.st_ctime)
+        cache_info['modified_time'] = datetime.fromtimestamp(stat.st_mtime)
+        
+        # Calculate file age based on modification time
+        age_delta = datetime.now() - cache_info['modified_time']
+        cache_info['age_days'] = age_delta.days
+        
+        # Check if within validity period and file is not empty
+        cache_info['is_valid'] = cache_info['age_days'] < max_age_days and cache_info['size'] > 0
+        
+        logger.info(f"PDF cache check: {file_path}")
+        logger.info(f"  - Size: {cache_info['size']} bytes")
+        logger.info(f"  - Age: {cache_info['age_days']} days")
+        logger.info(f"  - Valid: {cache_info['is_valid']}")
+    
+    return cache_info
 
 class NCCNDownloader:
     def __init__(self, username=None, password=None):
@@ -155,7 +201,7 @@ class NCCNDownloader:
             logger.error(f"An error occurred during login: {str(e)}")
             return False
     
-    async def download_pdf(self, pdf_url, download_dir=None, username=None, password=None, skip_if_exists=True):
+    async def download_pdf(self, pdf_url, download_dir=None, username=None, password=None, skip_if_exists=True, max_cache_age_days=PDF_CACHE_MAX_AGE_DAYS):
         """
         Downloads a PDF file, automatically logging in if required.
         
@@ -165,6 +211,7 @@ class NCCNDownloader:
             username (str, optional): Username (email address), required if not already logged in.
             password (str, optional): Password, required if not already logged in.
             skip_if_exists (bool): Whether to skip download if the file already exists. Defaults to True.
+            max_cache_age_days (int): Maximum cache file validity period (days). Defaults to PDF_CACHE_MAX_AGE_DAYS.
         
         Returns:
             tuple: (success (bool), saved_filename (str))
@@ -182,12 +229,18 @@ class NCCNDownloader:
             
             save_path = os.path.join(download_dir, filename)
             
-            # Check if file already exists
-            if skip_if_exists and os.path.exists(save_path):
-                file_size = os.path.getsize(save_path)
-                logger.info(f"File already exists, skipping download: {save_path}")
-                logger.info(f"File size: {file_size} bytes")
-                return True, filename
+            # Check if file already exists and is still valid (not too old)
+            if skip_if_exists:
+                cache_info = check_pdf_cache_age(save_path, max_cache_age_days)
+                if cache_info['exists']:
+                    if cache_info['is_valid']:
+                        logger.info(f"Using valid cached PDF: {save_path}")
+                        logger.info(f"File size: {cache_info['size']} bytes, age: {cache_info['age_days']} days")
+                        return True, filename
+                    else:
+                        logger.info(f"PDF cache expired ({cache_info['age_days']} days > {max_cache_age_days} days) or corrupted, re-downloading...")
+                else:
+                    logger.info(f"PDF not found in cache, downloading: {save_path}")
             
             logger.info(f"Downloading PDF: {pdf_url}")
             
@@ -235,7 +288,7 @@ class NCCNDownloader:
                                 logger.info("Login successful, re-downloading PDF...")
                                 time.sleep(1)  # Wait for login state to stabilize
                                 # Recursive call, but do not pass login credentials to avoid infinite loop
-                                return await self.download_pdf(pdf_url, download_dir=download_dir, skip_if_exists=skip_if_exists)
+                                return await self.download_pdf(pdf_url, download_dir=download_dir, skip_if_exists=skip_if_exists, max_cache_age_days=max_cache_age_days)
                             else:
                                 logger.error("Automatic login failed.")
                                 return False, filename
@@ -266,7 +319,7 @@ class NCCNDownloader:
                         if await self.login(login_username, login_password, pdf_url):
                             logger.info("Login successful, re-downloading PDF...")
                             time.sleep(1)
-                            return await self.download_pdf(pdf_url, download_dir=download_dir, skip_if_exists=skip_if_exists)
+                            return await self.download_pdf(pdf_url, download_dir=download_dir, skip_if_exists=skip_if_exists, max_cache_age_days=max_cache_age_days)
                         else:
                             logger.error("Automatic login failed.")
                             return False, filename
