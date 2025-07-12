@@ -58,9 +58,9 @@ Add this to your Client configuration:
 
 ### ⚠️ Important Notes
 
+- **NCCN Account Registration**: Please note that the NCCN username and password mentioned above must be registered on the official NCCN website.
 - **First-time Setup**: When you first start the MCP server, it needs to generate the YAML index of NCCN guidelines. This process takes 1-2 minutes, so please wait before attempting to use the server.
 - **Response Times**: Due to the non-RAG approach for accuracy, expect longer response times during guideline downloading and PDF reading processes.
-
 
 ## Prompts
 
