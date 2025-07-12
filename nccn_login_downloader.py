@@ -1,28 +1,58 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-NCCN自动登录和PDF下载工具
-用于自动登录NCCN网站并下载指定的PDF文件
+NCCN Automatic Login and PDF Downloader
+Automates logging into the NCCN website and downloading specified PDF files.
 """
 
-import requests
+import httpx
 from bs4 import BeautifulSoup
 import os
 import time
+import logging
+
+# Ensure logs directory exists
+LOGS_DIR = os.path.join(os.path.dirname(__file__), 'logs')
+os.makedirs(LOGS_DIR, exist_ok=True)
+
+# Configure logging for this module specifically
+logger = logging.getLogger(__name__)
+
+# Only configure handlers if they haven't been added yet
+if not logger.handlers:
+    logger.setLevel(logging.INFO)
+    
+    # Create formatter
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    
+    # Add console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+    
+    # Add file handler
+    file_handler = logging.FileHandler(os.path.join(LOGS_DIR, 'nccn_downloader.log'))
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    
+    # Prevent propagation to root logger to avoid duplicate logs
+    logger.propagate = False
 
 class NCCNDownloader:
     def __init__(self, username=None, password=None):
         """
-        初始化NCCN下载器
+        Initializes the NCCN Downloader.
         
         Args:
-            username (str, optional): 用户名(邮箱)
-            password (str, optional): 密码
+            username (str, optional): Username (email address).
+            password (str, optional): Password.
         """
-        self.session = requests.Session()
+        self.session = httpx.AsyncClient()
         self.username = username
         self.password = password
-        # 设置请求头，模拟浏览器访问
+        # Set request headers to simulate a browser visit
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -32,38 +62,42 @@ class NCCNDownloader:
             'Upgrade-Insecure-Requests': '1',
         })
         
-    def login(self, username, password, target_url="https://www.nccn.org/professionals/physician_gls/pdf/gastric.pdf"):
+    async def login(self, username, password, target_url="https://www.nccn.org/professionals/physician_gls/pdf/gastric.pdf"):
         """
-        登录NCCN网站
+        Logs into the NCCN website.
         
         Args:
-            username (str): 用户名(邮箱)
-            password (str): 密码
-            target_url (str): 要访问的目标URL
+            username (str): Username (email address).
+            password (str): Password.
+            target_url (str): The target URL to access after login.
         
         Returns:
-            bool: 登录是否成功
+            bool: True if login is successful, False otherwise.
         """
         try:
-            print("正在访问登录页面...")
+            logger.info("Accessing login page...")
             
-            # 首先访问目标URL，会被重定向到登录页面
-            login_response = self.session.get(target_url)
+            # First, access the target URL, which will redirect to the login page
+            login_response = await self.session.get(target_url, follow_redirects=True)
+            
+            logger.info(f"Login page response status: {login_response.status_code}")
+            logger.info(f"Login page final URL: {login_response.url}")
             
             if login_response.status_code != 200:
-                print(f"访问登录页面失败，状态码: {login_response.status_code}")
+                logger.error(f"Failed to access login page, status code: {login_response.status_code}")
                 return False
             
-            # 解析登录页面
+            # Parse the login page
             soup = BeautifulSoup(login_response.text, 'html.parser')
             
-            # 查找登录表单
+            # Find the login form
             form = soup.find('form', {'action': '/login/Index/'})
             if not form:
-                print("未找到登录表单")
+                logger.error("Login form not found.")
+                logger.debug(f"Page content preview: {login_response.text[:1000]}...")
                 return False
             
-            # 提取隐藏字段
+            # Extract hidden fields
             hidden_inputs = form.find_all('input', {'type': 'hidden'})
             form_data = {}
             
@@ -73,132 +107,189 @@ class NCCNDownloader:
                 if name:
                     form_data[name] = value
             
-            # 添加登录凭据
+            logger.info(f"Found {len(form_data)} hidden form fields")
+            
+            # Add login credentials
             form_data.update({
                 'Username': username,
                 'Password': password,
-                'RememberMe': 'false',  # 默认不记住
+                'RememberMe': 'false',  # Do not remember by default
             })
             
-            print("正在提交登录信息...")
+            logger.info("Submitting login information...")
             
-            # 提交登录表单
+            # Submit the login form
             login_url = "https://www.nccn.org/login/Index/"
             
-            # 设置登录请求的特定头部
+            # Set specific headers for the login request
             login_headers = {
                 'Content-Type': 'application/x-www-form-urlencoded',
-                'Referer': login_response.url,
+                'Referer': str(login_response.url),
                 'Origin': 'https://www.nccn.org',
             }
             
-            login_result = self.session.post(
+            login_result = await self.session.post(
                 login_url,
                 data=form_data,
                 headers=login_headers,
-                allow_redirects=True
+                follow_redirects=True
             )
             
-            # 检查登录是否成功
+            logger.info(f"Login result status: {login_result.status_code}")
+            logger.info(f"Login result final URL: {login_result.url}")
+            
+            # Check if login was successful
             if login_result.status_code == 200:
-                # 检查是否还在登录页面（登录失败的标志）
-                if '/login' in login_result.url or 'Log in' in login_result.text:
-                    print("登录失败：用户名或密码错误")
+                # Check if still on the login page (indicates login failure)
+                if '/login' in str(login_result.url) or 'Log in' in login_result.text:
+                    logger.error("Login failed: Incorrect username or password.")
                     return False
                 else:
-                    print("登录成功！")
+                    logger.info("Login successful!")
                     return True
             else:
-                print(f"登录请求失败，状态码: {login_result.status_code}")
+                logger.error(f"Login request failed, status code: {login_result.status_code}")
                 return False
                 
         except Exception as e:
-            print(f"登录过程中发生错误: {str(e)}")
+            logger.error(f"An error occurred during login: {str(e)}")
             return False
     
-    def download_pdf(self, pdf_url, download_dir=None, username=None, password=None, skip_if_exists=True):
+    async def download_pdf(self, pdf_url, download_dir=None, username=None, password=None, skip_if_exists=True):
         """
-        下载PDF文件，如果需要登录会自动进行登录
+        Downloads a PDF file, automatically logging in if required.
         
         Args:
-            pdf_url (str): PDF文件的URL
-            username (str): 用户名(邮箱)，如果未登录时需要
-            password (str): 密码，如果未登录时需要
-            skip_if_exists (bool): 如果文件已存在是否跳过下载，默认True
+            pdf_url (str): URL of the PDF file.
+            download_dir (str, optional): Directory to save the PDF. Defaults to current directory.
+            username (str, optional): Username (email address), required if not already logged in.
+            password (str, optional): Password, required if not already logged in.
+            skip_if_exists (bool): Whether to skip download if the file already exists. Defaults to True.
         
         Returns:
-            tuple: (是否成功 (bool), 保存的文件名 (str))
+            tuple: (success (bool), saved_filename (str))
         """
         try:
-            # 从URL自动提取文件名
+            # Automatically extract filename from URL
             filename = os.path.basename(pdf_url)
             if not filename or not filename.endswith('.pdf'):
                 filename = 'nccn_guideline.pdf'
+            
+            if download_dir:
+                os.makedirs(download_dir, exist_ok=True)
+            else:
+                download_dir = os.getcwd() # Use current working directory if not specified
+            
             save_path = os.path.join(download_dir, filename)
             
-            # 检查文件是否已存在
+            # Check if file already exists
             if skip_if_exists and os.path.exists(save_path):
                 file_size = os.path.getsize(save_path)
-                print(f"文件已存在，跳过下载: {save_path}")
-                print(f"文件大小: {file_size} bytes")
+                logger.info(f"File already exists, skipping download: {save_path}")
+                logger.info(f"File size: {file_size} bytes")
                 return True, filename
             
-            print(f"正在下载PDF: {pdf_url}")
+            logger.info(f"Downloading PDF: {pdf_url}")
             
-            # 设置PDF下载的请求头
+            # Set request headers for PDF download
             pdf_headers = {
                 'Accept': 'application/pdf,*/*',
                 'Referer': 'https://www.nccn.org/',
             }
             
-            response = self.session.get(pdf_url, headers=pdf_headers, stream=True)
+            # First, make a regular GET request to check the response
+            response = await self.session.get(pdf_url, headers=pdf_headers, follow_redirects=True)
             
+            logger.info(f"Response status: {response.status_code}")
+            logger.info(f"Final URL: {response.url}")
+            
+            # Check if we were redirected to a login page
             if response.status_code == 200:
-                # 检查响应是否为PDF
                 content_type = response.headers.get('Content-Type', '')
-                if 'pdf' not in content_type.lower():
-                    print("警告：响应内容可能不是PDF文件")
-                    print(f"Content-Type: {content_type}")
+                logger.info(f"Content-Type: {content_type}")
+                
+                # Check if this is actually a PDF
+                if 'application/pdf' in content_type:
+                    # This is a PDF, save it directly
+                    with open(save_path, 'wb') as f:
+                        f.write(response.content)
                     
-                    # 检查是否被重定向到登录页面
-                    if 'text/html' in content_type and ('login' in response.text.lower() or 'log in' in response.text.lower()):
-                        print("检测到需要登录，正在尝试自动登录...")
+                    file_size = os.path.getsize(save_path)
+                    logger.info(f"PDF file saved to: {save_path}")
+                    logger.info(f"File size: {file_size} bytes")
+                    return True, filename
+                
+                elif 'text/html' in content_type:
+                    # This is HTML, likely a login page
+                    response_text = response.text
+                    
+                    if 'login' in response_text.lower() or 'log in' in response_text.lower():
+                        logger.info("Login required detected, attempting automatic login...")
                         
-                        # 如果提供了登录凭据，尝试登录
+                        # If login credentials are provided, attempt to log in
                         login_username = username or self.username
                         login_password = password or self.password
                         
                         if login_username and login_password:
-                            if self.login(login_username, login_password, pdf_url):
-                                print("登录成功，重新下载PDF...")
-                                time.sleep(1)  # 等待登录状态稳定
-                                return self.download_pdf(pdf_url, download_dir=download_dir, skip_if_exists=skip_if_exists)  # 递归调用，但不传递登录凭据避免无限循环
+                            if await self.login(login_username, login_password, pdf_url):
+                                logger.info("Login successful, re-downloading PDF...")
+                                time.sleep(1)  # Wait for login state to stabilize
+                                # Recursive call, but do not pass login credentials to avoid infinite loop
+                                return await self.download_pdf(pdf_url, download_dir=download_dir, skip_if_exists=skip_if_exists)
                             else:
-                                print("自动登录失败")
+                                logger.error("Automatic login failed.")
                                 return False, filename
                         else:
-                            print("错误：需要登录但未提供用户名和密码")
+                            logger.error("Login required but username and password not provided.")
                             return False, filename
+                    else:
+                        logger.warning("Received HTML response but no login form detected.")
+                        logger.debug(f"Response preview: {response_text[:500]}...")
+                        return False, filename
+                else:
+                    logger.warning(f"Unexpected content type: {content_type}")
+                    return False, filename
+            
+            elif response.status_code == 302:
+                # Handle redirect manually if needed
+                redirect_url = response.headers.get('Location')
+                logger.info(f"Received redirect to: {redirect_url}")
                 
-                # 保存文件
-                with open(save_path, 'wb') as f:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
-                
-                file_size = os.path.getsize(save_path)
-                print(f"PDF文件已保存到: {save_path}")
-                print(f"文件大小: {file_size} bytes")
-                
-                return True, filename
+                # Check if redirect is to login page
+                if redirect_url and 'login' in redirect_url.lower():
+                    logger.info("Redirected to login page, attempting automatic login...")
+                    
+                    login_username = username or self.username
+                    login_password = password or self.password
+                    
+                    if login_username and login_password:
+                        if await self.login(login_username, login_password, pdf_url):
+                            logger.info("Login successful, re-downloading PDF...")
+                            time.sleep(1)
+                            return await self.download_pdf(pdf_url, download_dir=download_dir, skip_if_exists=skip_if_exists)
+                        else:
+                            logger.error("Automatic login failed.")
+                            return False, filename
+                    else:
+                        logger.error("Login required but username and password not provided.")
+                        return False, filename
+                else:
+                    logger.error(f"Unexpected redirect to: {redirect_url}")
+                    return False, filename
+            
             else:
-                print(f"下载失败，状态码: {response.status_code}")
+                logger.error(f"Download failed, status code: {response.status_code}")
                 return False, filename
                 
         except Exception as e:
-            print(f"下载过程中发生错误: {str(e)}")
+            logger.error(f"An error occurred during download: {str(e)}")
             return False, filename
     
-if __name__ == "__main__":
-    downloader = NCCNDownloader(username="gscfwid@gmail.com", password="KrScNN0qCsE!*7")
-    downloader.download_pdf("https://www.nccn.org/professionals/physician_gls/pdf/gastric.pdf", download_dir="/Users/laogao/opt/MCP/nccn_mcp/downloads")
+    async def __aenter__(self):
+        """Asynchronous context manager entry point."""
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Asynchronous context manager exit point."""
+        await self.session.aclose()
+

@@ -7,6 +7,7 @@ wheels/
 *.egg-info
 nccn_guidelines_index.yaml
 downloads/*
-
+tmp.md
+logs/*
 # Virtual environments
 .venv

@@ -17,12 +17,30 @@ import os
 import sys
 import yaml
 import asyncio
+import logging
+import threading
 from typing import Any, Dict, List, Optional
 from pathlib import Path
 
 # Add the current directory to the Python path for imports
 current_dir = Path(__file__).parent.absolute()
 sys.path.insert(0, str(current_dir))
+
+# Ensure logs directory exists
+LOGS_DIR = current_dir / 'logs'
+LOGS_DIR.mkdir(exist_ok=True)
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(LOGS_DIR / 'server.log')
+    ]
+)
+
+logger = logging.getLogger(__name__)
 
 from mcp.server.fastmcp import FastMCP
 from read_pdf import PDFReader
@@ -49,14 +67,14 @@ async def initialize_server():
     Initialize the MCP server by ensuring the NCCN guidelines index is available.
     This function will download/update the index if needed.
     """
-    print("Initializing NCCN Guidelines MCP Server...")
+    logger.info("Initializing NCCN Guidelines MCP Server...")
     
     # Display authentication status
     if NCCN_USERNAME and NCCN_PASSWORD:
-        print(f"✓ NCCN authentication configured for user: {NCCN_USERNAME}")
+        logger.info(f"✓ NCCN authentication configured for user: {NCCN_USERNAME}")
     else:
-        print("⚠ NCCN authentication not configured. Some features may be limited.")
-        print("  Set NCCN_USERNAME and NCCN_PASSWORD environment variables for full access.")
+        logger.warning("⚠ NCCN authentication not configured. Some features may be limited.")
+        logger.info("  Set NCCN_USERNAME and NCCN_PASSWORD environment variables for full access.")
     
     try:
         # Ensure the guidelines index exists and is up to date
@@ -71,15 +89,15 @@ async def initialize_server():
                 len(cat.get('guidelines', [])) 
                 for cat in guidelines_data.get('nccn_guidelines', [])
             )
-            print(f"✓ NCCN Guidelines index ready: {total_categories} categories, {total_guidelines} guidelines")
+            logger.info(f"✓ NCCN Guidelines index ready: {total_categories} categories, {total_guidelines} guidelines")
         else:
-            print("⚠ Warning: Could not load NCCN guidelines index")
+            logger.warning("⚠ Warning: Could not load NCCN guidelines index")
             
     except Exception as e:
-        print(f"⚠ Warning: Error initializing guidelines index: {str(e)}")
-        print("The server will continue but may have limited functionality")
+        logger.error(f"⚠ Warning: Error initializing guidelines index: {str(e)}")
+        logger.info("The server will continue but may have limited functionality")
     
-    print("NCCN Guidelines MCP Server initialization complete!")
+    logger.info("NCCN Guidelines MCP Server initialization complete!")
 
 def load_guidelines_index() -> Dict[str, Any]:
     """Load the NCCN guidelines index from YAML file."""
@@ -88,8 +106,10 @@ def load_guidelines_index() -> Dict[str, Any]:
         with open(index_path, 'r', encoding='utf-8') as f:
             return yaml.safe_load(f)
     except FileNotFoundError:
+        logger.error(f"Guidelines index file not found: {index_path}")
         return {"error": "Guidelines index file not found"}
     except yaml.YAMLError as e:
+        logger.error(f"Error parsing guidelines index: {str(e)}")
         return {"error": f"Error parsing guidelines index: {str(e)}"}
 
 @mcp.resource("nccn://guidelines-index")
@@ -134,10 +154,14 @@ async def get_index() -> str:
     try:
         index_path = current_dir / GUIDELINES_INDEX_FILE
         with open(index_path, 'r', encoding='utf-8') as f:
-            return f.read()
+            content = f.read()
+            logger.info(f"Successfully loaded guidelines index from {index_path}")
+            return content
     except FileNotFoundError:
+        logger.error(f"Guidelines index file not found: {index_path}")
         return "Error: Guidelines index file not found"
     except Exception as e:
+        logger.error(f"Error reading guidelines index: {str(e)}")
         return f"Error reading guidelines index: {str(e)}"
 
 @mcp.tool()
@@ -166,13 +190,13 @@ async def download_pdf(url: str) -> str:
         # Create downloader instance with credentials if available
         if auth_username and auth_password:
             downloader_instance = NCCNDownloader(auth_username, auth_password)
-            print(f"Using NCCN authentication for user: {auth_username}")
+            logger.info(f"Using NCCN authentication for user: {auth_username}")
         else:
             downloader_instance = downloader
-            print("No NCCN authentication configured - attempting anonymous download")
+            logger.info("No NCCN authentication configured - attempting anonymous download")
         
         # Download the PDF
-        success, actual_filename = downloader_instance.download_pdf(
+        success, actual_filename = await downloader_instance.download_pdf(
             pdf_url=url,
             download_dir=str(download_path),
             username=auth_username,
@@ -184,14 +208,17 @@ async def download_pdf(url: str) -> str:
         actual_full_path = download_path / actual_filename
         
         if success:
+            logger.info(f"PDF downloaded successfully: {actual_full_path}")
             return f"PDF downloaded successfully: {actual_full_path} (filename: {actual_filename})"
         else:
             error_msg = f"Failed to download PDF from {url} (attempted filename: {actual_filename})."
             if not (auth_username and auth_password):
                 error_msg += " You may need to provide NCCN login credentials via environment variables (NCCN_USERNAME, NCCN_PASSWORD) or function parameters."
+            logger.error(error_msg)
             return error_msg
     
     except Exception as e:
+        logger.error(f"Error downloading PDF: {str(e)}")
         return f"Error downloading PDF: {str(e)}"
 
 @mcp.tool()
@@ -220,29 +247,35 @@ async def extract_content(pdf_path: str, pages: Optional[str] = None) -> str:
                 if current_path.exists():
                     pdf_path = str(current_path)
                 else:
+                    logger.error(f"PDF file not found: {pdf_path}")
                     return f"PDF file not found: {pdf_path}"
         
         # Extract content using PDFReader
         content = pdf_reader.extract_content(pdf_path, pages)
         
         if not content.strip():
+            logger.warning(f"No content extracted from {pdf_path} (pages: {pages or 'all'})")
             return f"No content extracted from {pdf_path} (pages: {pages or 'all'})"
         
+        logger.info(f"Successfully extracted content from {pdf_path} (pages: {pages or 'all'})")
         return content
     
     except Exception as e:
+        logger.error(f"Error extracting content from PDF: {str(e)}")
         return f"Error extracting content from PDF: {str(e)}"
 
-def run_initialization():
-    """Run the async initialization in a synchronous context."""
-    try:
-        asyncio.run(initialize_server())
-    except Exception as e:
-        print(f"Error during initialization: {e}")
+def run_initialization_background():
+    """在后台线程中运行初始化"""
+    def background_init():
+        try:
+            asyncio.run(initialize_server())
+        except Exception as e:
+            logger.error(f"Background initialization error: {e}")
+    
+    thread = threading.Thread(target=background_init, daemon=True)
+    thread.start()
 
 if __name__ == "__main__":
-    # Initialize the server first
-    run_initialization()
-    
-    # Then run the MCP server
+    logger.info("Starting MCP server with background initialization...")
+    run_initialization_background()
     mcp.run(transport='stdio')
