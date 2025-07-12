@@ -46,7 +46,7 @@ Add this to your Client configuration:
   "mcpServers": {
     "nccn-guidelines": {
       "command": "uv",
-      "args": ["--directory", "<abslute_direction_of_nccn_mcp>", "run", "server.py"],
+      "args": ["--directory", "<abslute_direction_of_NCCN_guidelines_MCP>", "run", "server.py"],
       "env": {
         "NCCN_USERNAME": "<your_nccn_username>",
         "NCCN_PASSWORD": "<your_nccn_password>"
