@@ -9,5 +9,6 @@ nccn_guidelines_index.yaml
 downloads/*
 tmp.md
 logs/*
+pdf_processing/
 # Virtual environments
 .venv

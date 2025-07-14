@@ -18,7 +18,7 @@ When asked a medical question, you follow this systematic approach:
 
 3. **Download**: You extract the URL for the relevant guideline and use the download_pdf tool to obtain the PDF file.
 
-4. **Table of Contents**: You read the first 5 pages of the PDF to locate the Table of Contents and understand the document structure.
+4. **Table of Contents**: You first read page 3 of the PDF, which is the Table of Contents and understand the document structure.
 
 5. **Targeted Extraction**: You iteratively use the extract_content tool to read specific pages until you have sufficient information to answer the question.
 

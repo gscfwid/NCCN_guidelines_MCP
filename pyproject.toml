@@ -9,6 +9,6 @@ dependencies = [
     "bs4>=0.0.2",
     "httpx>=0.28.1",
     "mcp[cli]>=1.11.0",
-    "pdfplumber>=0.11.7",
+    "pypdf>=5.8.0",
     "pyyaml>=6.0.2",
 ]
