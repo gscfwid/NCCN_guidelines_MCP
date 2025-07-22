@@ -1,5 +1,14 @@
 # 🏥 NCCN Guidelines MCP Server
 
+[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
+[![MCP](https://img.shields.io/badge/MCP-v1.11.0-green.svg)](https://modelcontextprotocol.io/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-0.1.0-orange.svg)](https://github.com/gscfwid/nccn_mcp/releases)
+
+[![PyPDF](https://img.shields.io/badge/PyPDF-5.8.0+-lightblue.svg)](https://pypdf.readthedocs.io/)
+[![HTTPX](https://img.shields.io/badge/HTTPX-async-purple.svg)](https://www.python-httpx.org/)
+[![NCCN](https://img.shields.io/badge/NCCN-Guidelines-red.svg)](https://www.nccn.org/)
+
 A Model Context Protocol (MCP) server that provides access to NCCN (National Comprehensive Cancer Network) clinical guidelines.
 
 ## 🔬 How It Works
