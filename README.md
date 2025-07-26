@@ -11,6 +11,10 @@
 
 A Model Context Protocol (MCP) server that provides access to NCCN (National Comprehensive Cancer Network) clinical guidelines.
 
+<a href="https://glama.ai/mcp/servers/@gscfwid/NCCN_guidelines_MCP">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@gscfwid/NCCN_guidelines_MCP/badge" alt="NCCN Guidelines Server MCP server" />
+</a>
+
 ## 🔬 How It Works
 
 This project follows a systematic approach to provide accurate medical guidance:
